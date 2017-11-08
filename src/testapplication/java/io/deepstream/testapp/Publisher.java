@@ -2,35 +2,50 @@ package io.deepstream.testapp;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
+
 import io.deepstream.*;
 
 import java.util.Date;
 import java.util.concurrent.*;
 
 public class Publisher {
+
+    // private static final String host = "192.168.59.103";
+    public static String host = "localhost"; // 101.37.255.176 vip3-ali-hangzhou-kefu-ecs-sdb-fanym-test1
+    public static int port = 6020; // 
+
     public static void main(String[] args) throws InvalidDeepstreamConfig, InterruptedException {
-        new PublisherApplication();
+        new PublisherApplication("event/.*", host + ":" + port);
     }
 
     static class PublisherApplication {
+        private String topic;
+        private String url;
 
-        PublisherApplication() throws InvalidDeepstreamConfig {
-
+        PublisherApplication(String str1, String str2) throws InvalidDeepstreamConfig {
+            topic = str1;
+            url = str2;
             try {
-                DeepstreamClient client = DeepstreamFactory.getInstance().getClient("localhost:6020");
+                DeepstreamClient client =
+                        DeepstreamFactory.getInstance().getClient(url);
                 subscribeConnectionChanges(client);
                 subscribeRuntimeErrors(client);
-                
-                LoginResult loginResult = client.login();
+
+                JsonObject auth = new JsonObject();
+                auth.add("username", new JsonPrimitive("pub"));
+                auth.add("password", new JsonPrimitive("1234"));
+                LoginResult loginResult = client.login(auth);
+                //LoginResult loginResult = client.login();
                 if (!loginResult.loggedIn()) {
                     System.err.println("Provider Failed to login " + loginResult.getErrorEvent());
                 } else {
                     System.out.println("Provider Login Success");
                     listenEvent(client);
-                    listenRecord(client);
-                    listenList(client);
-                    provideRpc(client);
-                    updateRecordWithAck("testRecord", client);
+                    // listenRecord(client);
+                    // listenList(client);
+                    // provideRpc(client);
+                    // updateRecordWithAck("testRecord", client);
                 }
 
             } catch (Exception e) {
@@ -103,20 +118,21 @@ public class Publisher {
                     data.addProperty("id", subscription);
                     data.addProperty("count", count[0]++);
                     record.set(data);
-                    System.out.println( "Setting record " + data);
+                    System.out.println("Setting record " + data);
                 }
             }, 1, 5, TimeUnit.SECONDS);
             return scheduledFuture;
         }
 
-        private ScheduledFuture updateList(final String subscription, final DeepstreamClient client) {
+        private ScheduledFuture updateList(final String subscription,
+                final DeepstreamClient client) {
             final List list = client.record.getList(subscription);
-            list.setEntries( new String[] {} );
+            list.setEntries(new String[] {});
             ScheduledExecutorService executor = new ScheduledThreadPoolExecutor(1);
             ScheduledFuture scheduledFuture = executor.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
-                    list.addEntry( client.getUid() );
+                    list.addEntry(client.getUid());
                 }
             }, 1, 5, TimeUnit.SECONDS);
             return scheduledFuture;
@@ -135,10 +151,12 @@ public class Publisher {
 
         private void listenEvent(final DeepstreamClient client) {
             final ScheduledExecutorService executorService = new ScheduledThreadPoolExecutor(1);
+            // publishEvent("event/a", client, executorService);
             client.event.listen("event/.*", new ListenListener() {
                 @Override
                 public boolean onSubscriptionForPatternAdded(final String subscription) {
-                    System.out.println(String.format("Event %s just subscribed.", subscription));
+                    System.out
+                            .println(String.format("Event %s just subscribed.", subscription));
                     publishEvent(subscription, client, executorService);
                     return true;
                 }
@@ -150,15 +168,16 @@ public class Publisher {
             });
         }
 
-        private void publishEvent(final String subscription, final DeepstreamClient client, ScheduledExecutorService executorService) {
+        private void publishEvent(final String subscription, final DeepstreamClient client,
+                ScheduledExecutorService executorService) {
             executorService.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
-                    client.event.emit(subscription, new Object[]{"An event just happened", new Date().getTime()});
+                    client.event.emit(subscription,
+                            new String("An event just happened" + new Date().getTime()));
                 }
             }, 1, 5, TimeUnit.SECONDS);
         }
-
 
         private void provideRpc(final DeepstreamClient client) {
             client.rpc.provide("add-numbers", new RpcRequestedListener() {
@@ -181,7 +200,9 @@ public class Publisher {
             client.setRuntimeErrorHandler(new DeepstreamRuntimeErrorHandler() {
                 @Override
                 public void onException(Topic topic, Event event, String errorMessage) {
-                    System.out.println(String.format("Error occured %s %s %s", topic, event, errorMessage));
+                    System.out.println(
+                            String.format("PUB Error occured %s %s %s", topic, event,
+                                    errorMessage));
                 }
             });
         }
